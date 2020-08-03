@@ -1,0 +1,4 @@
+.env
+vpn/*
+!vpn/docker-compose.yml
+!vpn/traefik

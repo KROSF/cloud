@@ -1,0 +1,362 @@
+version: "3.7"
+
+#### Services ####
+services:
+  dockerproxy:
+    image: tecnativa/docker-socket-proxy:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - CONTAINERS=1
+      - IMAGES=1 # DIUN
+    networks:
+      - dockerproxy
+    healthcheck:
+      test: wget --no-cache --spider http://localhost:2375/v1.40/_ping || exit 1
+    labels:
+      diun.enable: "true"
+
+  oauth:
+    image: thomseddon/traefik-forward-auth:latest
+    restart: unless-stopped
+    networks:
+      - proxy
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - PROVIDERS_GENERIC_OAUTH_AUTH_URL=https://github.com/login/oauth/authorize
+      - PROVIDERS_GENERIC_OAUTH_TOKEN_URL=https://github.com/login/oauth/access_token
+      - PROVIDERS_GENERIC_OAUTH_USER_URL=https://api.github.com/user
+      - PROVIDERS_GENERIC_OAUTH_CLIENT_ID=${GITHUB_OAUTH_CLIENT_ID}
+      - PROVIDERS_GENERIC_OAUTH_CLIENT_SECRET=${GITHUB_OAUTH_CLIENT_SECRET}
+      - SECRET=${OAUTH_SECRET}
+      - COOKIE_DOMAIN=amd.host
+      - INSECURE_COOKIE=false
+      - AUTH_HOST=oauth.amd.host
+      - URL_PATH=/_oauth
+      - WHITELIST=${ADMIN_EMAIL}
+      - LOG_LEVEL=info
+      - LOG_FORMAT=text
+      - LIFETIME=2592000 # 30 days
+      - DEFAULT_ACTION=auth
+      - DEFAULT_PROVIDER=generic-oauth
+    labels:
+      diun.enable: "true"
+      traefik.enable: "true"
+      traefik.http.routers.oauth.service: oauth
+      traefik.http.routers.oauth.entrypoints: websecure
+      traefik.http.routers.oauth.tls.certresolver: step-ca
+      traefik.http.routers.oauth.rule: Host(`oauth.amd.host`)
+      traefik.http.services.oauth.loadbalancer.server.port: 4181
+      traefik.http.middlewares.oauth.forwardauth.address: http://oauth:4181
+      traefik.http.middlewares.oauth.forwardauth.trustForwardHeader: "true"
+      traefik.http.middlewares.oauth.forwardauth.authResponseHeaders: X-Forwarded-User
+      traefik.http.routers.oauth.middlewares: oauth
+
+  traefik:
+    image: traefik:latest
+    restart: unless-stopped
+    command:
+      - --api=true
+      - --api.dashboard=true
+      - --ping=true
+      - --log=true
+      - --log.level=INFO
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --providers.docker=true
+      - --providers.docker.network=proxy
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.endpoint=tcp://dockerproxy:2375
+      - --certificatesresolvers.letsencrypt.acme.email=${ADMIN_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/etc/traefik/acme/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.step-ca.acme.caserver=https://ca.amd.host/acme/acme/directory
+      - --certificatesresolvers.step-ca.acme.email=${ADMIN_EMAIL}
+      - --certificatesresolvers.step-ca.acme.storage=/etc/traefik/acme/step-ca.json
+      - --certificatesresolvers.step-ca.acme.httpchallenge.entrypoint=web
+    environment:
+      - LEGO_CA_CERTIFICATES=/etc/step-ca/certs/root_ca.crt
+    ports:
+      - 80:80
+      - 443:443
+    networks:
+      dockerproxy: null
+      proxy: null
+    volumes:
+      - traefik-acme:/etc/traefik/acme:rw
+      - step-ca-data:/etc/step-ca
+    depends_on:
+      - dockerproxy
+      - step-ca
+    healthcheck:
+      test: traefik healthcheck --ping
+    labels:
+      diun.enable: "true"
+      traefik.enable: "true"
+      traefik.http.routers.dashboard-https.middlewares: oauth
+      traefik.http.routers.dashboard-https.service: api@internal
+      traefik.http.routers.dashboard-https.entrypoints: websecure
+      traefik.http.routers.dashboard-https.tls.certresolver: step-ca
+      traefik.http.routers.dashboard-https.rule: Host(`traefik.amd.host`)
+
+  step-ca:
+    image: smallstep/step-ca:latest
+    restart: unless-stopped
+    expose:
+      - 443
+    networks:
+      proxy:
+        aliases:
+          - ca.amd.host
+    volumes:
+      - step-ca-data:/home/step
+    healthcheck:
+      test: step ca health
+    dns:
+      - 10.22.0.1
+    labels:
+      diun.enable: "true"
+      traefik.enable: "true"
+      traefik.tcp.routers.step-ca.rule: HostSNI(`ca.amd.host`)
+      traefik.tcp.routers.step-ca.tls.passthrough: "true"
+      traefik.tcp.routers.step-ca.service: step-ca
+      traefik.tcp.services.step-ca.loadbalancer.server.port: 443
+      traefik.tcp.routers.step-ca.entrypoints: websecure
+
+  bitwarden:
+    image: bitwardenrs/server:latest
+    restart: unless-stopped
+    environment:
+      ADMIN_TOKEN: ${BITWARDEN_ADMIN_TOKEN}
+      DOMAIN: https://bitwarden.amd.host
+      INVITATIONS_ALLOWED: "true"
+      SHOW_PASSWORD_HINT: "false"
+      SIGNUPS_ALLOWED: "false"
+      SMTP_AUTH_MECHANISM: Plain
+      SMTP_FROM: ${SMTP_FROM}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_PORT: "587"
+      SMTP_SSL: "true"
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      WEBSOCKET_ENABLED: "true"
+      WEB_VAULT_ENABLED: "true"
+      TZ: Europe/Madrid
+    networks:
+      - proxy
+    volumes:
+      - bitwarden-data:/data:rw
+    depends_on:
+      - traefik
+    labels:
+      diun.enable: "true"
+      traefik.enable: "true"
+      traefik.http.routers.bitwarden-ui-https.entrypoints: websecure
+      traefik.http.routers.bitwarden-ui-https.rule: Host(`bitwarden.amd.host`)
+      traefik.http.routers.bitwarden-ui-https.service: bitwarden-ui
+      traefik.http.routers.bitwarden-ui-https.tls: "true"
+      traefik.http.routers.bitwarden-ui-https.tls.certresolver: step-ca
+      traefik.http.routers.bitwarden-websocket-https.entrypoints: websecure
+      traefik.http.routers.bitwarden-websocket-https.rule: Host(`bitwarden.amd.host`) && Path(`/notifications/hub`)
+      traefik.http.routers.bitwarden-websocket-https.service: bitwarden-websocket
+      traefik.http.routers.bitwarden-websocket-https.tls: "true"
+      traefik.http.routers.bitwarden-websocket-https.tls.certresolver: step-ca
+      traefik.http.services.bitwarden-ui.loadbalancer.server.port: "80"
+      traefik.http.services.bitwarden-websocket.loadbalancer.server.port: "3012"
+
+  netdata:
+    image: netdata/netdata:latest
+    restart: unless-stopped
+    hostname: netdata.amd.host
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - apparmor:unconfined
+    environment:
+      - DOCKER_HOST=dockerproxy:2375
+    networks:
+      - proxy
+      - dockerproxy
+    depends_on:
+      - dockerproxy
+      - traefik
+    volumes:
+      - netdata-config:/etc/netdata
+      - netdata-lib:/var/lib/netdata
+      - netdata-cache:/var/cache/netdata
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/host/etc/os-release:ro
+    labels:
+      diun.enable: "true"
+      traefik.enable: "true"
+      traefik.http.routers.netdata-https.entrypoints: websecure
+      traefik.http.routers.netdata-https.tls.certresolver: step-ca
+      traefik.http.routers.netdata-https.rule: Host(`netdata.amd.host`)
+      traefik.http.routers.netdata-https.middlewares: oauth
+
+  linkding:
+    image: sissbruecker/linkding:latest
+    restart: unless-stopped
+    networks:
+      - proxy
+    volumes:
+      - linkding-data:/etc/linkding/data
+    depends_on:
+      - traefik
+    labels:
+      diun.enable: "true"
+      traefik.enable: "true"
+      traefik.http.routers.linkding-https.entrypoints: websecure
+      traefik.http.routers.linkding-https.tls.certresolver: step-ca
+      traefik.http.routers.linkding-https.rule: Host(`linkding.amd.host`)
+
+  diun:
+    image: crazymax/diun:latest
+    restart: unless-stopped
+    networks:
+      - default
+      - dockerproxy
+    volumes:
+      - diun-data:/data
+      - ./configs/diun.yml:/config/files/diun.yml
+    environment:
+      - TZ=Europe/Madrid
+      - LOG_LEVEL=info
+      - LOG_JSON=false
+      - DIUN_WATCH_WORKERS=10
+      - DIUN_WATCH_SCHEDULE=0 */6 * * *
+      - DIUN_PROVIDERS_DOCKER=true
+      - DIUN_PROVIDERS_DOCKER_ENDPOINT=tcp://dockerproxy:2375
+      - DIUN_NOTIF_TELEGRAM_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - DIUN_NOTIF_TELEGRAM_CHATIDS=${TELEGRAM_CHAT_ID}
+      - DIUN_PROVIDERS_FILE_FILENAME=/config/files/diun.yml
+      - DIUN_WATCH_FIRSTCHECKNOTIF=true
+    labels:
+      diun.enable: "true"
+
+  sse:
+    image: krosf/sse
+    expose:
+      - 8000
+    restart: unless-stopped
+    networks:
+      - proxy
+    healthcheck:
+      test: wget --no-cache --spider http://localhost:8000/ || exit 1
+    depends_on:
+      - traefik
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.sse-https.entrypoints: websecure
+      traefik.http.routers.sse-https.tls.certresolver: step-ca
+      traefik.http.routers.sse-https.rule: Host(`sse.local.host`)
+
+  dozzle:
+    image: amir20/dozzle:latest
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      DOCKER_HOST: tcp://dockerproxy:2375
+      DOZZLE_LEVEL: info
+      DOZZLE_TAILSIZE: 300
+      DOZZLE_FILTER: "status=running"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - proxy
+      - dockerproxy
+    depends_on:
+      - dockerproxy
+      - traefik
+    labels:
+      diun.enable: "true"
+      traefik.enable: "true"
+      traefik.http.routers.dozzle-https.entrypoints: websecure
+      traefik.http.routers.dozzle-https.tls.certresolver: step-ca
+      traefik.http.routers.dozzle-https.rule: Host(`dozzle.amd.host`)
+      traefik.http.routers.dozzle-https.middlewares: oauth
+
+  rxresume:
+    image: amruthpillai/reactive-resume:latest
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - proxy
+    volumes:
+      - rxresume-data:/usr/src/app
+    depends_on:
+      - traefik
+    labels:
+      diun.enable: "true"
+      traefik.enable: "true"
+      traefik.http.routers.rxresume-https.entrypoints: websecure
+      traefik.http.routers.rxresume-https.tls.certresolver: step-ca
+      traefik.http.routers.rxresume-https.rule: Host(`rxresume.amd.host`)
+      traefik.http.routers.rxresume-https.middlewares: oauth
+
+#### Volumes ####
+volumes:
+  traefik-acme:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/traefik/acme
+
+  bitwarden-data:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/bitwarden/data
+
+  netdata-lib:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/netdata/lib
+
+  netdata-cache:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/netdata/cache
+
+  netdata-config:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/netdata/config
+
+  step-ca-data:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/ssd1/step-ca/data
+
+  linkding-data:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/linkding/data
+
+  diun-data:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/diun/data
+
+  rxresume-data:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/rxresume/data
+
+#### Networks ####
+networks:
+  dockerproxy:
+    external: false
+    internal: true
+
+  proxy:
+    external: true
+    name: proxy

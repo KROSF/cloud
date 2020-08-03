@@ -1,0 +1,67 @@
+version: "3.7"
+services:
+  traefik:
+    image: traefik:v2.2
+    container_name: "traefik"
+    restart: unless-stopped
+    command:
+      - "--api=true"
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--providers.docker.network=proxy"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/config/files"
+    ports:
+      - "80:80"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./traefik:/config/files"
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.traefik.rule: Host(`traefik.wg.host`)
+      traefik.http.routers.traefik.entrypoints: web
+      traefik.http.routers.traefik.service: api@internal
+
+  adguardhome:
+    image: adguard/adguardhome:v0.103.3
+    container_name: adguardhome
+    restart: unless-stopped
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+    volumes:
+      - ./workdir:/opt/adguardhome/work
+      - ./confdir:/opt/adguardhome/conf
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.adguard.rule: Host(`adguard.wg.host`)
+      traefik.http.routers.adguard.entrypoints: web
+      traefik.http.services.adguard.loadbalancer.server.port: 80
+
+  wg-access-server:
+    image: place1/wg-access-server:0.2.5
+    restart: unless-stopped
+    container_name: wg-access-server
+    environment:
+      - ADMIN_PASSWORD=${WG_ADMIN_PASSWORD}
+      - ADMIN_USERNAME=${WG_ADMIN_USERNAME}
+      - STORAGE=file:///data/storage
+      - CONFIG=/data/config.yml
+    network_mode: "host" # Allow clients to access services
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - "wg-data:/data"
+    ports:
+      - "8000:8000/tcp"
+      - "51820:51820/udp"
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+
+volumes:
+  wg-data:
+    driver_opts:
+      device: /mnt/wg-data
+      o: bind
+      type: none

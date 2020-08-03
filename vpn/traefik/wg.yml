@@ -1,0 +1,11 @@
+http:
+  routers:
+    vpn:
+      service: vpn_service
+      rule: "Host(`vpn.wg.host`)"
+
+  services:
+    vpn_service:
+      loadBalancer:
+        servers:
+          - url: http://172.17.0.1:8000
