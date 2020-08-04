@@ -355,6 +355,8 @@ services:
       DB_USER: ${POSTGRES_USER}
       DB_PASS: ${POSTGRES_PASSWORD}
       DB_NAME: wiki
+    volumes:
+      - wiki-content:/wiki/data/content
     networks:
       - proxy
       - postgres
@@ -440,6 +442,11 @@ volumes:
     driver: local-persist
     driver_opts:
       mountpoint: /mnt/hdd1/postgres/pgadmin
+
+  wiki-content:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/wiki/content
 
   homer-data:
     driver: local-persist
