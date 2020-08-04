@@ -304,6 +304,61 @@ services:
       traefik.http.routers.rxresume-https.rule: Host(`rxresume.amd.host`)
       traefik.http.routers.rxresume-https.middlewares: oauth
 
+  postgres:
+    image: postgres:12-alpine
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    networks:
+      - postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    labels:
+      diun.enable: "true"
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${ADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    networks:
+      - proxy
+      - postgres
+    labels:
+      diun.enable: "true"
+      traefik.enable: "true"
+      traefik.http.routers.pgadmin-https.entrypoints: websecure
+      traefik.http.routers.pgadmin-https.tls.certresolver: step-ca
+      traefik.http.routers.pgadmin-https.rule: Host(`pgadmin.amd.host`)
+
+  wiki:
+    image: requarks/wiki:latest
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      DB_TYPE: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
+      DB_NAME: wiki
+    networks:
+      - proxy
+      - postgres
+    labels:
+      diun.enable: "true"
+      traefik.enable: "true"
+      traefik.http.routers.wiki-https.entrypoints: websecure
+      traefik.http.routers.wiki-https.tls.certresolver: step-ca
+      traefik.http.routers.wiki-https.rule: Host(`wiki.amd.host`)
+
 #### Volumes ####
 volumes:
   traefik-acme:
@@ -351,9 +406,23 @@ volumes:
     driver_opts:
       mountpoint: /mnt/hdd1/rxresume/data
 
+  postgres-data:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/postgres/data
+
+  pgadmin-data:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/postgres/pgadmin
+
 #### Networks ####
 networks:
   dockerproxy:
+    external: false
+    internal: true
+
+  postgres:
     external: false
     internal: true
 
