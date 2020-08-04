@@ -3,5 +3,6 @@ vpn/*
 !vpn/docker-compose.yml
 !vpn/traefik
 configs/homer/*
+configs/homer/tools/*.png
 !configs/homer/config.yml
 !configs/homer/tools
