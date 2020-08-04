@@ -1,0 +1,114 @@
+---
+title: "Homer"
+subtitle: "AMD"
+logo: "logo.png"
+
+header: false
+footer: false
+
+theme: default
+colors:
+  light:
+    highlight-primary: "#3367d6"
+    highlight-secondary: "#4285f4"
+    highlight-hover: "#5a95f5"
+    background: "#f5f5f5"
+    card-background: "#ffffff"
+    text: "#363636"
+    text-header: "#ffffff"
+    text-title: "#303030"
+    text-subtitle: "#424242"
+    card-shadow: rgba(0, 0, 0, 0.1)
+    link-hover: "#363636"
+  dark:
+    highlight-primary: "#3367d6"
+    highlight-secondary: "#4285f4"
+    highlight-hover: "#5a95f5"
+    background: "#131313"
+    card-background: "#2b2b2b"
+    text: "#eaeaea"
+    text-header: "#ffffff"
+    text-title: "#fafafa"
+    text-subtitle: "#f5f5f5"
+    card-shadow: rgba(0, 0, 0, 0.4)
+    link-hover: "#ffdd57"
+
+links:
+  - name: "Repository"
+    icon: "fab fa-github"
+    url: "https://github.com/krosf/cloud"
+    target: "_blank" # optionnal html a tag target attribute
+
+services:
+  - name: "Applications"
+    icon: "fas fa-cloud"
+    items:
+      - name: "Traefik"
+        logo: "assets/tools/icons/traefik.png"
+        subtitle: "Cloud Native Edge Router"
+        tag: "app"
+        url: "https://traefik.amd.host"
+        target: "_blank"
+
+      - name: "Netdata"
+        logo: "assets/tools/icons/netdata.png"
+        subtitle: "Real-time performance monitoring, done right!"
+        tag: "app"
+        url: "https://netdata.amd.host"
+        target: "_blank"
+
+      - name: "Dozzle"
+        logo: "assets/tools/icons/dozzle.png"
+        subtitle: "Real-time log viewer for docker containers"
+        tag: "app"
+        url: "https://dozzle.amd.host"
+        target: "_blank"
+
+      - name: "AdGuardHome"
+        logo: "assets/tools/icons/adguardhome.png"
+        subtitle: "DNS ads & trackers blocking"
+        tag: "app"
+        url: "http://adguard.wg.host"
+        target: "_blank"
+
+      - name: "WireGuard"
+        logo: "assets/tools/icons/wireguard.png"
+        subtitle: "Access Portal"
+        tag: "app"
+        url: "http://vpn.wg.host"
+        target: "_blank"
+
+      - name: "Bitwarden"
+        logo: "assets/tools/icons/bitwarden.png"
+        subtitle: "Password Management Service"
+        tag: "app"
+        url: "https://bitwarden.amd.host"
+        target: "_blank"
+
+      - name: "pgAdmin"
+        logo: "assets/tools/icons/postgres.png"
+        subtitle: "Administration platform for PostgreSQL"
+        tag: "app"
+        url: "https://pgadmin.amd.host"
+        target: "_blank"
+
+      - name: "Wiki.js"
+        logo: "assets/tools/icons/wikijs.png"
+        subtitle: "The most powerful Wiki software"
+        tag: "app"
+        url: "https://wiki.amd.host"
+        target: "_blank"
+
+      - name: "RxResume"
+        logo: "assets/tools/icons/rxresume.png"
+        subtitle: "Resume builder"
+        tag: "app"
+        url: "https://rxresume.amd.host"
+        target: "_blank"
+
+      - name: "Linkding"
+        logo: "assets/tools/icons/linkding.png"
+        subtitle: "Self-hosted bookmark service"
+        tag: "app"
+        url: "https://linkding.amd.host"
+        target: "_blank"
