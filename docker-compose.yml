@@ -344,19 +344,17 @@ services:
       traefik.http.routers.pgadmin-https.rule: Host(`pgadmin.amd.host`)
 
   wiki:
-    image: requarks/wiki:latest
+    image: linuxserver/wikijs:latest
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
     environment:
-      DB_TYPE: postgres
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${POSTGRES_USER}
-      DB_PASS: ${POSTGRES_PASSWORD}
-      DB_NAME: wiki
+      PUID: 1000
+      PGID: 1000
+      TZ: Europe/Madrid
     volumes:
-      - wiki-content:/wiki/data/content
+      - wiki-data:/data
+      - wiki-config:/config
     networks:
       - proxy
       - postgres
@@ -385,6 +383,55 @@ services:
       traefik.http.routers.homer-https.entrypoints: websecure
       traefik.http.routers.homer-https.tls.certresolver: step-ca
       traefik.http.routers.homer-https.rule: Host(`homer.amd.host`)
+
+  registry:
+    image: registry:2
+    restart: unless-stopped
+    environment:
+      - REGISTRY_HTTP_SECRET=${REGISTRY_HTTP_SECRET}
+      - REGISTRY_STORAGE_DELETE_ENABLED=true
+      - REGISTRY_AUTH=htpasswd
+      - REGISTRY_AUTH_HTPASSWD_REALM=Registry Realm
+      - REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd
+    volumes:
+      - registry-data:/var/lib/registry
+      - ./configs/registry/auth:/auth
+    networks:
+      - proxy
+    labels:
+      diun.enable: "true"
+      traefik.enable: "true"
+      traefik.http.routers.registry-https.entrypoints: websecure
+      traefik.http.routers.registry-https.rule: Host(`registry.amd.host`) && PathPrefix(`/v2`)
+      traefik.http.routers.registry-https.service: registry
+      traefik.http.routers.registry-https.tls: "true"
+      traefik.http.routers.registry-https.tls.certresolver: step-ca
+      traefik.http.services.registry.loadbalancer.server.port: "5000"
+
+  registry-ui:
+    image: jc21/registry-ui:latest
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - REGISTRY_HOST=registry:5000
+      - REGISTRY_DOMAIN=registry.amd.host
+      - REGISTRY_STORAGE_DELETE_ENABLED=true
+      - REGISTRY_USER=${REGISTRY_USER}
+      - REGISTRY_PASS=${REGISTRY_PASSWORD}
+    networks:
+      - proxy
+    depends_on:
+      - registry
+    labels:
+      diun.enable: "true"
+      traefik.enable: "true"
+      traefik.http.routers.registry-ui-https.entrypoints: websecure
+      traefik.http.routers.registry-ui-https.rule: Host(`registry.amd.host`)
+      traefik.http.routers.registry-ui-https.service: registry-ui
+      traefik.http.routers.registry-ui-https.tls: "true"
+      traefik.http.routers.registry-ui-https.tls.certresolver: step-ca
+      traefik.http.services.registry-ui.loadbalancer.server.port: "80"
+      traefik.http.routers.registry-ui-https.middlewares: oauth
 
 #### Volumes ####
 volumes:
@@ -443,15 +490,25 @@ volumes:
     driver_opts:
       mountpoint: /mnt/hdd1/postgres/pgadmin
 
-  wiki-content:
+  wiki-data:
     driver: local-persist
     driver_opts:
-      mountpoint: /mnt/hdd1/wiki/content
+      mountpoint: /mnt/hdd1/wiki/data
+
+  wiki-config:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/wiki/config
 
   homer-data:
     driver: local-persist
     driver_opts:
       mountpoint: ${PWD}/configs/homer
+
+  registry-data:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/registry
 
 #### Networks ####
 networks:
