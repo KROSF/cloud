@@ -433,6 +433,23 @@ services:
       traefik.http.services.registry-ui.loadbalancer.server.port: "80"
       traefik.http.routers.registry-ui-https.middlewares: oauth
 
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    restart: unless-stopped
+    networks:
+      - proxy
+    volumes:
+      - filebrowser-data:/srv
+      - ./configs/filebrowser/.filebrowser.json:/.filebrowser.json
+      - ./configs/filebrowser/database.db:/database.db
+    labels:
+      diun.enable: "true"
+      traefik.enable: "true"
+      traefik.http.routers.files-https.entrypoints: websecure
+      traefik.http.routers.files-https.tls.certresolver: step-ca
+      traefik.http.routers.files-https.rule: Host(`files.amd.host`)
+      traefik.http.routers.files-https.middlewares: oauth
+
 #### Volumes ####
 volumes:
   traefik-acme:
@@ -509,6 +526,11 @@ volumes:
     driver: local-persist
     driver_opts:
       mountpoint: /mnt/hdd1/registry
+
+  filebrowser-data:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/filebrowser/data
 
 #### Networks ####
 networks:

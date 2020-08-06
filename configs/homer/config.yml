@@ -112,3 +112,17 @@ services:
         tag: "app"
         url: "https://linkding.amd.host"
         target: "_blank"
+
+      - name: "Filebrowser"
+        logo: "assets/tools/icons/filebrowser.svg"
+        subtitle: "Web File Browser"
+        tag: "app"
+        url: "https://files.amd.host"
+        target: "_blank"
+
+      - name: "Docker Regitry"
+        logo: "assets/tools/icons/docker.png"
+        subtitle: "Storing and distributing Docker images"
+        tag: "app"
+        url: "https://registry.amd.host"
+        target: "_blank"
