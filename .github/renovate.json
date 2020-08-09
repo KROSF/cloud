@@ -1,8 +1,5 @@
 {
-  "docker": {
-    "enabled": false
-  },
-  "docker-compose": {
-    "enabled": true
-  }
+  "extends": [
+    "config:base"
+  ]
 }
