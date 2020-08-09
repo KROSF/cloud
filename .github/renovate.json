@@ -1,0 +1,8 @@
+{
+  "docker": {
+    "enabled": false
+  },
+  "docker-compose": {
+    "enabled": true
+  }
+}
