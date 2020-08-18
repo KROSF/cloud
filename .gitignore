@@ -8,3 +8,4 @@ configs/homer/tools/*.png
 !configs/homer/tools
 configs/registry
 configs/filebrowser/database.db
+configs/adguard

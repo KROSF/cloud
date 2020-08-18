@@ -1,0 +1,6 @@
+{
+  "db": {
+    "host": "mongo"
+  },
+  "maxSyncSize": 1073741824
+}

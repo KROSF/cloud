@@ -32,9 +32,9 @@ services:
       - PROVIDERS_GENERIC_OAUTH_CLIENT_ID=${GITHUB_OAUTH_CLIENT_ID}
       - PROVIDERS_GENERIC_OAUTH_CLIENT_SECRET=${GITHUB_OAUTH_CLIENT_SECRET}
       - SECRET=${OAUTH_SECRET}
-      - COOKIE_DOMAIN=amd.host
+      - COOKIE_DOMAIN=${DOMAINNAME}
       - INSECURE_COOKIE=false
-      - AUTH_HOST=oauth.amd.host
+      - AUTH_HOST=oauth.${DOMAINNAME}
       - URL_PATH=/_oauth
       - WHITELIST=${ADMIN_EMAIL}
       - LOG_LEVEL=info
@@ -47,8 +47,7 @@ services:
       traefik.enable: "true"
       traefik.http.routers.oauth.service: oauth
       traefik.http.routers.oauth.entrypoints: websecure
-      traefik.http.routers.oauth.tls.certresolver: step-ca
-      traefik.http.routers.oauth.rule: Host(`oauth.amd.host`)
+      traefik.http.routers.oauth.rule: Host(`oauth.${DOMAINNAME}`)
       traefik.http.services.oauth.loadbalancer.server.port: 4181
       traefik.http.middlewares.oauth.forwardauth.address: http://oauth:4181
       traefik.http.middlewares.oauth.forwardauth.trustForwardHeader: "true"
@@ -69,19 +68,19 @@ services:
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
       - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls.domains[0].sans=*.${DOMAINNAME}
       - --providers.docker=true
       - --providers.docker.network=proxy
       - --providers.docker.exposedbydefault=false
       - --providers.docker.endpoint=tcp://dockerproxy:2375
-      - --certificatesresolvers.letsencrypt.acme.email=${ADMIN_EMAIL}
-      - --certificatesresolvers.letsencrypt.acme.storage=/etc/traefik/acme/acme.json
-      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
-      - --certificatesresolvers.step-ca.acme.caserver=https://ca.amd.host/acme/acme/directory
-      - --certificatesresolvers.step-ca.acme.email=${ADMIN_EMAIL}
-      - --certificatesresolvers.step-ca.acme.storage=/etc/traefik/acme/step-ca.json
-      - --certificatesresolvers.step-ca.acme.httpchallenge.entrypoint=web
+      - --certificatesResolvers.dns-cloudflare.acme.email=${ADMIN_EMAIL}
+      - --certificatesResolvers.dns-cloudflare.acme.storage=/etc/traefik/acme/acme.json
+      - --certificatesResolvers.dns-cloudflare.acme.dnsChallenge.provider=cloudflare
+      - --certificatesResolvers.dns-cloudflare.acme.dnsChallenge.resolvers=1.1.1.1:53,1.0.0.1:53
+      - --certificatesResolvers.dns-cloudflare.acme.dnsChallenge.delayBeforeCheck=90
     environment:
-      - LEGO_CA_CERTIFICATES=/etc/step-ca/certs/root_ca.crt
+      - CF_API_EMAIL=${ADMIN_EMAIL}
+      - CF_API_KEY=${CF_API_KEY}
     ports:
       - 80:80
       - 443:443
@@ -90,10 +89,8 @@ services:
       proxy: null
     volumes:
       - traefik-acme:/etc/traefik/acme:rw
-      - step-ca-data:/etc/step-ca
     depends_on:
       - dockerproxy
-      - step-ca
     healthcheck:
       test: traefik healthcheck --ping
     labels:
@@ -102,39 +99,35 @@ services:
       traefik.http.routers.dashboard-https.middlewares: oauth
       traefik.http.routers.dashboard-https.service: api@internal
       traefik.http.routers.dashboard-https.entrypoints: websecure
-      traefik.http.routers.dashboard-https.tls.certresolver: step-ca
-      traefik.http.routers.dashboard-https.rule: Host(`traefik.amd.host`)
+      traefik.http.routers.dashboard-https.tls.certresolver: dns-cloudflare
+      traefik.http.routers.dashboard-https.rule: Host(`traefik.${DOMAINNAME}`)
 
-  step-ca:
-    image: smallstep/step-ca:latest
+  adguardhome:
+    image: adguard/adguardhome:latest
+    container_name: adguardhome
     restart: unless-stopped
-    expose:
-      - 443
     networks:
-      proxy:
-        aliases:
-          - ca.amd.host
+      - proxy
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
     volumes:
-      - step-ca-data:/home/step
-    healthcheck:
-      test: step ca health
-    dns:
-      - 10.22.0.1
+      - adguard-data:/opt/adguardhome/work
+      - ./configs/adguard:/opt/adguardhome/conf
     labels:
       diun.enable: "true"
       traefik.enable: "true"
-      traefik.tcp.routers.step-ca.rule: HostSNI(`ca.amd.host`)
-      traefik.tcp.routers.step-ca.tls.passthrough: "true"
-      traefik.tcp.routers.step-ca.service: step-ca
-      traefik.tcp.services.step-ca.loadbalancer.server.port: 443
-      traefik.tcp.routers.step-ca.entrypoints: websecure
+      traefik.http.routers.adguard-https.entrypoints: websecure
+      traefik.http.routers.adguard-https.rule: Host(`adguard.${DOMAINNAME}`)
+      traefik.http.routers.adguard-https.tls.certresolver: dns-cloudflare
+      traefik.http.services.adguard-https.loadbalancer.server.port: 80
 
   bitwarden:
     image: bitwardenrs/server:latest
     restart: unless-stopped
     environment:
       ADMIN_TOKEN: ${BITWARDEN_ADMIN_TOKEN}
-      DOMAIN: https://bitwarden.amd.host
+      DOMAIN: https://bitwarden.${DOMAINNAME}
       INVITATIONS_ALLOWED: "true"
       SHOW_PASSWORD_HINT: "false"
       SIGNUPS_ALLOWED: "false"
@@ -158,22 +151,22 @@ services:
       diun.enable: "true"
       traefik.enable: "true"
       traefik.http.routers.bitwarden-ui-https.entrypoints: websecure
-      traefik.http.routers.bitwarden-ui-https.rule: Host(`bitwarden.amd.host`)
+      traefik.http.routers.bitwarden-ui-https.rule: Host(`bitwarden.${DOMAINNAME}`)
       traefik.http.routers.bitwarden-ui-https.service: bitwarden-ui
       traefik.http.routers.bitwarden-ui-https.tls: "true"
-      traefik.http.routers.bitwarden-ui-https.tls.certresolver: step-ca
+      traefik.http.routers.bitwarden-ui-https.tls.certresolver: dns-cloudflare
       traefik.http.routers.bitwarden-websocket-https.entrypoints: websecure
-      traefik.http.routers.bitwarden-websocket-https.rule: Host(`bitwarden.amd.host`) && Path(`/notifications/hub`)
+      traefik.http.routers.bitwarden-websocket-https.rule: Host(`bitwarden.${DOMAINNAME}`) && Path(`/notifications/hub`)
       traefik.http.routers.bitwarden-websocket-https.service: bitwarden-websocket
       traefik.http.routers.bitwarden-websocket-https.tls: "true"
-      traefik.http.routers.bitwarden-websocket-https.tls.certresolver: step-ca
+      traefik.http.routers.bitwarden-websocket-https.tls.certresolver: dns-cloudflare
       traefik.http.services.bitwarden-ui.loadbalancer.server.port: "80"
       traefik.http.services.bitwarden-websocket.loadbalancer.server.port: "3012"
 
   netdata:
     image: netdata/netdata:latest
     restart: unless-stopped
-    hostname: netdata.amd.host
+    hostname: netdata.${DOMAINNAME}
     cap_add:
       - SYS_PTRACE
     security_opt:
@@ -199,25 +192,9 @@ services:
       diun.enable: "true"
       traefik.enable: "true"
       traefik.http.routers.netdata-https.entrypoints: websecure
-      traefik.http.routers.netdata-https.tls.certresolver: step-ca
-      traefik.http.routers.netdata-https.rule: Host(`netdata.amd.host`)
+      traefik.http.routers.netdata-https.rule: Host(`netdata.${DOMAINNAME}`)
+      traefik.http.routers.netdata-https.tls.certresolver: dns-cloudflare
       traefik.http.routers.netdata-https.middlewares: oauth
-
-  linkding:
-    image: sissbruecker/linkding:latest
-    restart: unless-stopped
-    networks:
-      - proxy
-    volumes:
-      - linkding-data:/etc/linkding/data
-    depends_on:
-      - traefik
-    labels:
-      diun.enable: "true"
-      traefik.enable: "true"
-      traefik.http.routers.linkding-https.entrypoints: websecure
-      traefik.http.routers.linkding-https.tls.certresolver: step-ca
-      traefik.http.routers.linkding-https.rule: Host(`linkding.amd.host`)
 
   diun:
     image: crazymax/diun:latest
@@ -257,8 +234,8 @@ services:
     labels:
       traefik.enable: "true"
       traefik.http.routers.sse-https.entrypoints: websecure
-      traefik.http.routers.sse-https.tls.certresolver: step-ca
-      traefik.http.routers.sse-https.rule: Host(`sse.local.host`)
+      traefik.http.routers.sse-https.rule: Host(`sse.${DOMAINNAME}`)
+      traefik.http.routers.sse-https.tls.certresolver: dns-cloudflare
 
   dozzle:
     image: amir20/dozzle:latest
@@ -282,8 +259,8 @@ services:
       diun.enable: "true"
       traefik.enable: "true"
       traefik.http.routers.dozzle-https.entrypoints: websecure
-      traefik.http.routers.dozzle-https.tls.certresolver: step-ca
-      traefik.http.routers.dozzle-https.rule: Host(`dozzle.amd.host`)
+      traefik.http.routers.dozzle-https.tls.certresolver: dns-cloudflare
+      traefik.http.routers.dozzle-https.rule: Host(`dozzle.${DOMAINNAME}`)
       traefik.http.routers.dozzle-https.middlewares: oauth
 
   rxresume:
@@ -301,69 +278,9 @@ services:
       diun.enable: "true"
       traefik.enable: "true"
       traefik.http.routers.rxresume-https.entrypoints: websecure
-      traefik.http.routers.rxresume-https.tls.certresolver: step-ca
-      traefik.http.routers.rxresume-https.rule: Host(`rxresume.amd.host`)
+      traefik.http.routers.rxresume-https.rule: Host(`rxresume.${DOMAINNAME}`)
+      traefik.http.routers.rxresume-https.tls.certresolver: dns-cloudflare
       traefik.http.routers.rxresume-https.middlewares: oauth
-
-  postgres:
-    image: postgres:12-alpine
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-    networks:
-      - postgres
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    labels:
-      diun.enable: "true"
-
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${ADMIN_EMAIL}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
-    volumes:
-      - pgadmin-data:/var/lib/pgadmin
-    networks:
-      - proxy
-      - postgres
-    labels:
-      diun.enable: "true"
-      traefik.enable: "true"
-      traefik.http.routers.pgadmin-https.entrypoints: websecure
-      traefik.http.routers.pgadmin-https.tls.certresolver: step-ca
-      traefik.http.routers.pgadmin-https.rule: Host(`pgadmin.amd.host`)
-
-  wiki:
-    image: linuxserver/wikijs:latest
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    environment:
-      PUID: 1000
-      PGID: 1000
-      TZ: Europe/Madrid
-    volumes:
-      - wiki-data:/data
-      - wiki-config:/config
-    networks:
-      - proxy
-      - postgres
-    labels:
-      diun.enable: "true"
-      traefik.enable: "true"
-      traefik.http.routers.wiki-https.entrypoints: websecure
-      traefik.http.routers.wiki-https.tls.certresolver: step-ca
-      traefik.http.routers.wiki-https.rule: Host(`wiki.amd.host`)
 
   homer:
     image: b4bz/homer:latest
@@ -381,8 +298,8 @@ services:
       diun.enable: "true"
       traefik.enable: "true"
       traefik.http.routers.homer-https.entrypoints: websecure
-      traefik.http.routers.homer-https.tls.certresolver: step-ca
-      traefik.http.routers.homer-https.rule: Host(`homer.amd.host`)
+      traefik.http.routers.homer-https.tls.certresolver: dns-cloudflare
+      traefik.http.routers.homer-https.rule: Host(`homer.${DOMAINNAME}`)
 
   registry:
     image: registry:2
@@ -402,10 +319,10 @@ services:
       diun.enable: "true"
       traefik.enable: "true"
       traefik.http.routers.registry-https.entrypoints: websecure
-      traefik.http.routers.registry-https.rule: Host(`registry.amd.host`) && PathPrefix(`/v2`)
+      traefik.http.routers.registry-https.rule: Host(`registry.${DOMAINNAME}`) && PathPrefix(`/v2`)
       traefik.http.routers.registry-https.service: registry
       traefik.http.routers.registry-https.tls: "true"
-      traefik.http.routers.registry-https.tls.certresolver: step-ca
+      traefik.http.routers.registry-https.tls.certresolver: dns-cloudflare
       traefik.http.services.registry.loadbalancer.server.port: "5000"
 
   registry-ui:
@@ -414,7 +331,7 @@ services:
     environment:
       - NODE_ENV=production
       - REGISTRY_HOST=registry:5000
-      - REGISTRY_DOMAIN=registry.amd.host
+      - REGISTRY_DOMAIN=registry.${DOMAINNAME}
       - REGISTRY_STORAGE_DELETE_ENABLED=true
       - REGISTRY_USER=${REGISTRY_USER}
       - REGISTRY_PASS=${REGISTRY_PASSWORD}
@@ -426,10 +343,10 @@ services:
       diun.enable: "true"
       traefik.enable: "true"
       traefik.http.routers.registry-ui-https.entrypoints: websecure
-      traefik.http.routers.registry-ui-https.rule: Host(`registry.amd.host`)
+      traefik.http.routers.registry-ui-https.rule: Host(`registry.${DOMAINNAME}`)
       traefik.http.routers.registry-ui-https.service: registry-ui
       traefik.http.routers.registry-ui-https.tls: "true"
-      traefik.http.routers.registry-ui-https.tls.certresolver: step-ca
+      traefik.http.routers.registry-ui-https.tls.certresolver: dns-cloudflare
       traefik.http.services.registry-ui.loadbalancer.server.port: "80"
       traefik.http.routers.registry-ui-https.middlewares: oauth
 
@@ -446,9 +363,42 @@ services:
       diun.enable: "true"
       traefik.enable: "true"
       traefik.http.routers.files-https.entrypoints: websecure
-      traefik.http.routers.files-https.tls.certresolver: step-ca
-      traefik.http.routers.files-https.rule: Host(`files.amd.host`)
+      traefik.http.routers.files-https.rule: Host(`files.${DOMAINNAME}`)
+      traefik.http.routers.files-https.tls.certresolver: dns-cloudflare
       traefik.http.routers.files-https.middlewares: oauth
+
+  xbrowsersync:
+    image: xbrowsersync/api:latest
+    restart: unless-stopped
+    networks:
+      - proxy
+      - mongo
+    environment:
+      - XBROWSERSYNC_DB_PWD=$XBS_DB_PASSWORD
+      - XBROWSERSYNC_DB_USER=$XBS_DB_USERNAME
+    volumes:
+      - ./configs/xbrowsersync/settings.json:/usr/src/api/config/settings.json
+    depends_on:
+      - mongo
+    labels:
+      diun.enable: "true"
+      traefik.enable: "true"
+      traefik.http.routers.xbrowsersync-https.entrypoints: websecure
+      traefik.http.routers.xbrowsersync-https.rule: Host(`xbrowsersync.${DOMAINNAME}`)
+      traefik.http.routers.xbrowsersync-https.tls.certresolver: dns-cloudflare
+
+  mongo:
+    image: mongo:latest
+    restart: unless-stopped
+    networks:
+      - mongo
+    environment:
+      - MONGO_INITDB_DATABASE=xbrowsersync
+      - MONGO_INITDB_ROOT_PASSWORD=$XBS_DB_PASSWORD
+      - MONGO_INITDB_ROOT_USERNAME=$XBS_DB_USERNAME
+    volumes:
+      - mongo-data:/data/db
+      - ./configs/xbrowsersync/mongoconfig.js:/docker-entrypoint-initdb.d/mongoconfig.js
 
 #### Volumes ####
 volumes:
@@ -477,16 +427,6 @@ volumes:
     driver_opts:
       mountpoint: /mnt/hdd1/netdata/config
 
-  step-ca-data:
-    driver: local-persist
-    driver_opts:
-      mountpoint: /mnt/ssd1/step-ca/data
-
-  linkding-data:
-    driver: local-persist
-    driver_opts:
-      mountpoint: /mnt/hdd1/linkding/data
-
   diun-data:
     driver: local-persist
     driver_opts:
@@ -496,26 +436,6 @@ volumes:
     driver: local-persist
     driver_opts:
       mountpoint: /mnt/hdd1/rxresume/data
-
-  postgres-data:
-    driver: local-persist
-    driver_opts:
-      mountpoint: /mnt/hdd1/postgres/data
-
-  pgadmin-data:
-    driver: local-persist
-    driver_opts:
-      mountpoint: /mnt/hdd1/postgres/pgadmin
-
-  wiki-data:
-    driver: local-persist
-    driver_opts:
-      mountpoint: /mnt/hdd1/wiki/data
-
-  wiki-config:
-    driver: local-persist
-    driver_opts:
-      mountpoint: /mnt/hdd1/wiki/config
 
   homer-data:
     driver: local-persist
@@ -532,13 +452,23 @@ volumes:
     driver_opts:
       mountpoint: /mnt/hdd1/filebrowser/data
 
+  mongo-data:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/mongo/data
+
+  adguard-data:
+    driver: local-persist
+    driver_opts:
+      mountpoint: /mnt/hdd1/adguard/data
+
 #### Networks ####
 networks:
   dockerproxy:
     external: false
     internal: true
 
-  postgres:
+  mongo:
     external: false
     internal: true
 
