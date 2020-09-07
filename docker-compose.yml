@@ -55,7 +55,7 @@ services:
       traefik.http.routers.oauth.middlewares: oauth
 
   traefik:
-    image: traefik:v2.3
+    image: traefik:chevrotin
     restart: unless-stopped
     command:
       - --api=true
@@ -63,7 +63,6 @@ services:
       - --ping=true
       - --log=true
       - --log.level=INFO
-      - --experimental.pilot.token=${TRAEFIK_PILOT_TOKEN}
       - --entrypoints.web.address=:80
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
@@ -300,25 +299,6 @@ services:
       traefik.http.routers.rxresume-https.tls.certresolver: dns-cloudflare
       traefik.http.routers.rxresume-https.middlewares: oauth
 
-  # homer:
-  #   image: b4bz/homer:latest
-  #   restart: unless-stopped
-  #   security_opt:
-  #     - no-new-privileges:true
-  #   environment:
-  #     GID: 1000
-  #     UID: 1000
-  #   networks:
-  #     - proxy
-  #   volumes:
-  #     - homer-data:/www/assets
-  #   labels:
-  #     diun.enable: "true"
-  #     traefik.enable: "true"
-  #     traefik.http.routers.homer-https.entrypoints: websecure
-  #     traefik.http.routers.homer-https.tls.certresolver: dns-cloudflare
-  #     traefik.http.routers.homer-https.rule: Host(`homer.${DOMAINNAME}`)
-
   registry:
     image: registry:2
     restart: unless-stopped
@@ -417,6 +397,8 @@ services:
     volumes:
       - mongo-data:/data/db
       - ./configs/xbrowsersync/mongoconfig.js:/docker-entrypoint-initdb.d/mongoconfig.js
+    labels:
+      diun.enable: "true"
 
 #### Volumes ####
 volumes:
@@ -454,11 +436,6 @@ volumes:
     driver: local-persist
     driver_opts:
       mountpoint: /mnt/hdd1/rxresume/data
-
-  homer-data:
-    driver: local-persist
-    driver_opts:
-      mountpoint: ${PWD}/configs/homer
 
   registry-data:
     driver: local-persist
