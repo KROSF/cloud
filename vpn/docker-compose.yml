@@ -40,7 +40,7 @@ services:
       traefik.http.services.adguard.loadbalancer.server.port: 80
 
   wg-access-server:
-    image: place1/wg-access-server:0.2.5
+    image: place1/wg-access-server:v0.4.6
     restart: unless-stopped
     container_name: wg-access-server
     environment:
