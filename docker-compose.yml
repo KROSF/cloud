@@ -300,7 +300,7 @@ services:
       traefik.http.routers.rxresume-https.middlewares: oauth
 
   registry:
-    image: registry:2
+    image: registry:3
     restart: unless-stopped
     environment:
       - REGISTRY_HTTP_SECRET=${REGISTRY_HTTP_SECRET}
